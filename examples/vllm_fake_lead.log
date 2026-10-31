@@ -1,0 +1,12 @@
+INFO 10:00:01 Starting vLLM server for qwen3_4b (gpu-memory-utilization=0.85, max-model-len=4096)
+INFO 10:00:03 Loading model weights from /workspace/models/qwen3_4b
+INFO 10:00:08 Initializing the engine
+ERROR 10:00:09 Engine core initialization failed. Failed core proc(s): {}
+INFO 10:00:09 Shutting down
+Traceback (most recent call last):
+  File "vllm/engine/async_llm_engine.py", line 214, in from_engine_args
+    raise RuntimeError("Engine core initialization failed")
+RuntimeError: Engine core initialization failed
+(EngineCore_DP0 pid=48213)   File "vllm/model_executor/layers/rotary_embedding.py", line 137, in <module>
+(EngineCore_DP0 pid=48213)     from flash_attn.ops.triton.rotary import apply_rotary
+(EngineCore_DP0 pid=48213) ImportError: libflash_attn_2_cuda.so: cannot open shared object file: No such file or directory
