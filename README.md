@@ -159,9 +159,52 @@ It is deliberately **not**:
 Known limits, stated rather than hidden:
 
 - `gpu` tries `nvidia-smi` first, then `rocm-smi`. ROCm parsing maps columns **by name, not by position** (column order varies across `rocm-smi` versions); an unrecognised schema returns `UNKNOWN` instead of a guessed number. `amd-smi` is not yet wired up.
-- Verified against a stubbed `rocm-smi` only — **not yet run on physical AMD hardware** by this project (W7900/gfx1100 runs are planned, not done).
+- **ROCm real-hardware evidence is one run, one card, one `rocm-smi` version.** The W7900/gfx1100 capture (2026-11-01, `rocm-smi 4.0.0`) is recorded as a fixture + write-up (see "What is verified" above), but it is a single snapshot: the *in-use* path, multi-card, MIG, and other `rocm-smi` versions remain unverified and return `UNKNOWN` rather than a guess.
 - `probe --measure` is **single-request (batch=1)** throughput. It is an input to a budget calculation, **not** a server throughput ceiling.
 - `logs` matches a small, explicit pattern set (vLLM / SGLang engine-core style failures). Unknown stacks come back `UNKNOWN` rather than a guess.
+
+## What this proves — and what it does not
+
+**Proves (within the evidence in this repo):**
+
+- A single command can tell you *which layer* a broken LLM deployment fails at:
+  GPU real usage (NVIDIA + ROCm, mapped by column name), fake-lead vs. genuine
+  error classification, readiness, and runtime budget arithmetic.
+- The three-state evidence contract is enforced, not claimed: a clean log is
+  `NO_ERROR_FOUND`, not "healthy"; a missing `nvidia-smi` is `UNKNOWN`, not
+  "0 GPUs"; exit code `3` is reserved for insufficient data so CI never
+  mistakes "couldn't tell" for "all good".
+- ROCm parsing works on **real** hardware (AMD Radeon PRO W7900 / gfx1100,
+  `rocm-smi 4.0.0`, captured 2026-11-01 and stored as a fixture + write-up),
+  and survives column reordering (a unit counter-proof).
+
+**Does not prove (honest boundary):**
+
+- **No benchmark or capacity claim.** `probe --measure` is single-request
+  throughput, an input to a budget calculation, not a server ceiling.
+- **No multi-model / multi-card / MIG evidence.** The single W7900 snapshot is
+  one run, one card, one `rocm-smi` version. The `in_use` path on AMD,
+  multi-card, MIG, and other `rocm-smi` versions are unverified.
+- **No NVIDIA real-hardware run.** NVIDIA parsing is covered by unit tests only;
+  no physical `nvidia-smi` capture is in the repo.
+- **No causal diagnosis.** The tool reports *what* is wrong at which layer; it
+  does not explain *why* a model degraded, and it does not fix anything.
+- **No monitoring or dashboards.** It is a point-in-time triage, not a metrics
+  exporter.
+
+## Reproduce the numbers
+
+Everything above is re-derivable from the repo alone, no GPU needed:
+
+```bash
+python -m pytest -q        # 31 pass — parsing, budget, log triage, exit codes
+```
+
+The ROCm claim traces to
+`tests/fixtures/rocm_smi_w7900_2026-11-01.csv` +
+`docs/evidence-rocm-w7900-2026-11-01.md` (the raw capture and its write-up),
+and the fake-lead claim to `examples/vllm_fake_lead.log` (a real failed vLLM
+start, not a hand-written example).
 
 ## Prior art and how this differs
 
@@ -178,7 +221,7 @@ Surveyed 2026-10-31 via the GitHub API; star counts move, so treat them as a tim
 ## Development
 
 ```bash
-python -m pytest -q      # 29 tests: NVIDIA + ROCm parsing, budget math, log triage (with a
+python -m pytest -q      # 31 tests: NVIDIA + ROCm parsing, budget math, log triage (with a
                          # negative control), a live OpenAI-stub probe, report schema,
                          # postmortem shape + honesty rules, exit codes
 ```

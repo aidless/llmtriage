@@ -62,7 +62,7 @@ llmtriage postmortem --from triage.json --title "事件名" --root-cause-state U
 ## 不做什么
 
 不是 benchmark（用 inference-perf / llmperf）、不是监控（用 nvitop / nvtop / dcgm-exporter）、
-不是容量仿真器。`gpu` 先试 `nvidia-smi`，找不到再试 `rocm-smi`；ROCm 解析**按列名而非列位置**映射（`rocm-smi` 各版本列序会变），列名认不出时返回 UNKNOWN 而不是猜一个数；`amd-smi` 尚未接入；**只用桩程序验证过，未在真实 AMD 硬件上实跑**；
+不是容量仿真器。`gpu` 先试 `nvidia-smi`，找不到再试 `rocm-smi`；ROCm 解析**按列名而非列位置**映射（`rocm-smi` 各版本列序会变），列名认不出时返回 UNKNOWN 而不是猜一个数；`amd-smi` 尚未接入；**ROCm 真机证据是一次运行、一块卡、一个 `rocm-smi` 版本**（W7900/gfx1100，2026-11-01 采集，fixture + 文档见 `tests/fixtures/rocm_smi_w7900_2026-11-01.csv` 与 `docs/evidence-rocm-w7900-2026-11-01.md`）——`in_use` 路径、多卡、MIG、其他 `rocm-smi` 版本仍未验证，一律返回 UNKNOWN 而非猜数；
 `probe --measure` 是单请求口径，只能当预算输入，不能当服务吞吐上限。
 
 生态调研与差异化依据见 [docs/landscape-2026-10-31.md](docs/landscape-2026-10-31.md)。
@@ -70,7 +70,7 @@ llmtriage postmortem --from triage.json --title "事件名" --root-cause-state U
 ## 测试
 
 ```bash
-python -m pytest -q     # 29 项
+python -m pytest -q     # 31 项
 ```
 
 测试先于实现（RED → GREEN），其中两条是反证而非顺证：①日志分类器——父进程自身 traceback 不得被判为假线索；②ROCm 解析器——同一份数据换一种列顺序必须解出完全相同的结果，这才让「按列名映射」成为可检验的断言而不是一句注释；③事故复盘生成器——根因 UNRESOLVED 时输出里**不得出现「已修复」**，无验证证据时必须打印「未验证」。
