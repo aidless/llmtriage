@@ -16,5 +16,11 @@ First public cut. Scope: single host, OpenAI-compatible endpoint, zero runtime d
 - `triage`: runs every available check and emits one Markdown/JSON report.
 - Contracts: exit codes `0/1/2/3`, and three-state evidence `OBSERVED / INFERRED / UNKNOWN`.
 
-Tests: 19, written before implementation (RED → GREEN), including a live OpenAI stub
-and a negative control for the log classifier.
+- `gpu` backend fallback: `nvidia-smi` → `rocm-smi`. ROCm columns are mapped **by name**
+  (order varies across `rocm-smi` versions); unrecognised schema returns `UNKNOWN`.
+
+Tests: 23, written before implementation (RED → GREEN), including a live OpenAI stub,
+a negative control for the log classifier, and a column-reordering counter-proof for
+the ROCm parser.
+
+Not verified: no run on physical AMD hardware yet (stubbed `rocm-smi` only).

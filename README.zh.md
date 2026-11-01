@@ -34,7 +34,7 @@ llmtriage triage --base-url http://127.0.0.1:8000 --log vllm.log \
 ## 不做什么
 
 不是 benchmark（用 inference-perf / llmperf）、不是监控（用 nvitop / nvtop / dcgm-exporter）、
-不是容量仿真器。已知限制：`gpu` 目前只调 `nvidia-smi`（AMD 返回 UNKNOWN 并给出提示）；
+不是容量仿真器。`gpu` 先试 `nvidia-smi`，找不到再试 `rocm-smi`；ROCm 解析**按列名而非列位置**映射（`rocm-smi` 各版本列序会变），列名认不出时返回 UNKNOWN 而不是猜一个数；`amd-smi` 尚未接入；**只用桩程序验证过，未在真实 AMD 硬件上实跑**；
 `probe --measure` 是单请求口径，只能当预算输入，不能当服务吞吐上限。
 
 生态调研与差异化依据见 [docs/landscape-2026-10-31.md](docs/landscape-2026-10-31.md)。
@@ -42,9 +42,9 @@ llmtriage triage --base-url http://127.0.0.1:8000 --log vllm.log \
 ## 测试
 
 ```bash
-python -m pytest -q     # 19 项
+python -m pytest -q     # 23 项
 ```
 
-测试先于实现（RED → GREEN）；日志分类器带**反证**：父进程自身 traceback 不得被判为假线索。
+测试先于实现（RED → GREEN），其中两条是反证而非顺证：①日志分类器——父进程自身 traceback 不得被判为假线索；②ROCm 解析器——同一份数据换一种列顺序必须解出完全相同的结果，这才让「按列名映射」成为可检验的断言而不是一句注释。
 
 License: MIT

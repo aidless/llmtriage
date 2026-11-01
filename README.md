@@ -114,7 +114,8 @@ It is deliberately **not**:
 
 Known limits, stated rather than hidden:
 
-- `gpu` currently shells out to `nvidia-smi` only. ROCm (`rocm-smi` / `amd-smi`) parsing is on the roadmap; on AMD today it returns `UNKNOWN` with a hint.
+- `gpu` tries `nvidia-smi` first, then `rocm-smi`. ROCm parsing maps columns **by name, not by position** (column order varies across `rocm-smi` versions); an unrecognised schema returns `UNKNOWN` instead of a guessed number. `amd-smi` is not yet wired up.
+- Verified against a stubbed `rocm-smi` only — **not yet run on physical AMD hardware** by this project (W7900/gfx1100 runs are planned, not done).
 - `probe --measure` is **single-request (batch=1)** throughput. It is an input to a budget calculation, **not** a server throughput ceiling.
 - `logs` matches a small, explicit pattern set (vLLM / SGLang engine-core style failures). Unknown stacks come back `UNKNOWN` rather than a guess.
 
@@ -133,12 +134,17 @@ Surveyed 2026-10-31 via the GitHub API; star counts move, so treat them as a tim
 ## Development
 
 ```bash
-python -m pytest -q      # 19 tests: parsing, budget math, log triage (with a negative control),
-                         # a live OpenAI-stub probe, report schema, CLI exit codes
+python -m pytest -q      # 23 tests: NVIDIA + ROCm parsing, budget math, log triage (with a
+                         # negative control), a live OpenAI-stub probe, report schema, exit codes
 ```
 
-Tests are written before the implementation (RED → GREEN) and the log classifier carries a
-**negative control**: a genuine parent-process traceback must *not* be reported as a fake lead.
+Tests are written before the implementation (RED → GREEN). Two of them are counter-proofs rather
+than happy paths:
+
+- the log classifier carries a **negative control**: a genuine parent-process traceback must *not*
+  be reported as a fake lead;
+- the ROCm parser is fed the **same data in a reordered column layout** and must produce identical
+  results — that is what makes "map by column name" a claim instead of a comment.
 
 ## License
 

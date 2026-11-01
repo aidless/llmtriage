@@ -269,3 +269,60 @@ def test_cli_gpu_reads_fake_nvidia_smi(tmp_path):
     assert p.returncode == 0, p.stderr
     data = json.loads(p.stdout)
     assert data["findings"][0]["state"] == "OBSERVED"
+
+
+# ---------------------------------------------------------- ROCm (AMD) backend
+# 真实环境是 AMD Radeon PRO W7900 / gfx1100，nvidia-smi 不存在。
+# rocm-smi 的列名与顺序随版本变化 ⇒ 解析必须**按列名**映射，不能按位置。
+ROCM_CSV = """device,VRAM Total Memory (B),VRAM Total Used Memory (B),GPU use (%)
+card0,51091324928,45875200,97
+card1,51091324928,0,0
+"""
+
+ROCM_CSV_REORDERED = """device,GPU use (%),VRAM Total Used Memory (B),VRAM Total Memory (B)
+card0,97,45875200,51091324928
+card1,0,0,51091324928
+"""
+
+
+def test_parse_rocm_smi_by_column_name():
+    from llmtriage.gpu import parse_rocm_smi
+
+    s = parse_rocm_smi(ROCM_CSV)
+    assert len(s) == 2
+    assert s[0].index == 0
+    assert s[0].mem_total_mb == pytest.approx(51091324928 / (1024 * 1024), rel=0.01)
+    assert s[0].mem_used_mb == pytest.approx(45875200 / (1024 * 1024), rel=0.01)
+    assert s[0].util_pct == 97
+
+
+def test_parse_rocm_smi_survives_column_reordering():
+    """同一份数据换个列顺序必须解出同样的结果——这是'按列名'而非'按位置'的反证。"""
+    from llmtriage.gpu import parse_rocm_smi
+
+    a = parse_rocm_smi(ROCM_CSV)
+    b = parse_rocm_smi(ROCM_CSV_REORDERED)
+    assert [(x.index, x.mem_used_mb, x.mem_total_mb, x.util_pct) for x in a] == \
+           [(x.index, x.mem_used_mb, x.mem_total_mb, x.util_pct) for x in b]
+
+
+def test_parse_rocm_smi_unknown_schema_raises_not_guesses():
+    """列名认不出来时必须抛错（上层转 UNKNOWN），绝不按位置瞎解。"""
+    from llmtriage.gpu import parse_rocm_smi
+
+    with pytest.raises(ValueError):
+        parse_rocm_smi("device,temperature,power\ncard0,45,180\n")
+
+
+def test_gpu_backend_falls_back_to_rocm_when_nvidia_missing(tmp_path):
+    """PATH 里只有 rocm-smi、没有 nvidia-smi 时，必须走 ROCm 分支。"""
+    stub = tmp_path / "rocm-smi"
+    stub.write_text("#!/bin/sh\nprintf 'device,VRAM Total Memory (B),VRAM Total Used Memory (B),GPU use (%%)\\n"
+                    "card0,51091324928,45875200,97\\n'\n")
+    stub.chmod(0o755)
+    from llmtriage.gpu import snapshot
+
+    f = snapshot(env_path="%s:/usr/bin:/bin" % tmp_path)
+    assert f.state == "OBSERVED"
+    assert f.verdict == "OK"
+    assert "rocm-smi" in f.evidence
