@@ -22,7 +22,28 @@ llmtriage logs --file examples/vllm_fake_lead.log
 llmtriage budget --tokens 12000 --tok-per-s 4.32 --deadline 4500 --requests 2
 llmtriage triage --base-url http://127.0.0.1:8000 --log vllm.log \
                  --tokens 12000 --tok-per-s 4.32 --deadline 4500 --requests 2 --out triage.md
+# 把分诊结果变成可直接交付的事故复盘
+llmtriage postmortem --from triage.json --title "事件名" --root-cause-state UNRESOLVED \
+                     --action "限制影响的动作" --verify "确认恢复的证据" --out postmortem.md
 ```
+
+> 注意：退出码是真的，所以 `llmtriage logs ... && 下一步` 在发现问题时会**中断**（exit 1）。
+> 脚本里需要继续执行就用 `;` 或 `|| true`。
+
+## 事故复盘报告
+
+`llmtriage postmortem` 把分诊结果变成这份岗位真正要交的东西：评估报告、优化建议、问题复盘。
+它只在**一个方向**上强约束 —— 不许让"根因未知"读起来像"已修复"：
+
+- 根因三态声明：`CONFIRMED`（证据闭合）/ `SUSPECTED`（有线索未闭合）/ `UNRESOLVED`（不知道）。
+  选 `UNRESOLVED` 时报告会写"根因未确定：以下处置只用于限制影响，不是根因修复"。
+- 没有验证证据时，验证小节打印 **未验证** 与"在补充验证前，不得把该事件标记为已解决"；
+  生成物里**不会出现"已修复"三个字** —— 修没修由验证小节回答，不由措辞回答。
+- 每条发现的原始 `evidence` 逐行进入附录"证据清单"。
+
+仓库里有两个由 CLI 实跑生成的样例（不是手写）：
+[`examples/postmortem-example.md`](examples/postmortem-example.md)（CONFIRMED）与
+[`examples/postmortem-unresolved-example.md`](examples/postmortem-unresolved-example.md)（UNRESOLVED）。
 
 ## 两个契约
 
@@ -42,9 +63,9 @@ llmtriage triage --base-url http://127.0.0.1:8000 --log vllm.log \
 ## 测试
 
 ```bash
-python -m pytest -q     # 23 项
+python -m pytest -q     # 29 项
 ```
 
-测试先于实现（RED → GREEN），其中两条是反证而非顺证：①日志分类器——父进程自身 traceback 不得被判为假线索；②ROCm 解析器——同一份数据换一种列顺序必须解出完全相同的结果，这才让「按列名映射」成为可检验的断言而不是一句注释。
+测试先于实现（RED → GREEN），其中两条是反证而非顺证：①日志分类器——父进程自身 traceback 不得被判为假线索；②ROCm 解析器——同一份数据换一种列顺序必须解出完全相同的结果，这才让「按列名映射」成为可检验的断言而不是一句注释；③事故复盘生成器——根因 UNRESOLVED 时输出里**不得出现「已修复」**，无验证证据时必须打印「未验证」。
 
 License: MIT

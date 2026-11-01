@@ -11,6 +11,7 @@ from .budget import estimate
 from .finding import SEVERITY
 from .gpu import snapshot
 from .logs import analyse
+from .postmortem import build_postmortem, from_triage_file
 from .probe import measure_throughput, readiness
 from .report import build
 
@@ -68,6 +69,21 @@ def main(argv: list[str] | None = None) -> int:
     p_tri.add_argument("--json", action="store_true")
     p_tri.add_argument("--out", help="把 Markdown 报告写到文件")
 
+    p_pm = sub.add_parser("postmortem", help="由分诊结果生成事故复盘（根因三态，不猜）")
+    p_pm.add_argument("--from", dest="src", help="triage --json 的产物；省略则用 --log/--base-url 现跑")
+    p_pm.add_argument("--base-url")
+    p_pm.add_argument("--log")
+    p_pm.add_argument("--title", default="LLM 推理部署事件")
+    p_pm.add_argument("--date", default="")
+    p_pm.add_argument("--impact", default="")
+    p_pm.add_argument("--root-cause", default="")
+    p_pm.add_argument("--root-cause-state", default="UNRESOLVED",
+                      choices=["CONFIRMED", "SUSPECTED", "UNRESOLVED"])
+    p_pm.add_argument("--action", action="append", default=[])
+    p_pm.add_argument("--verify", action="append", default=[])
+    p_pm.add_argument("--timeline", action="append", default=[])
+    p_pm.add_argument("--out", help="输出 Markdown 路径（省略则打到 stdout）")
+
     a = ap.parse_args(argv)
 
     if a.cmd == "gpu":
@@ -89,6 +105,27 @@ def main(argv: list[str] | None = None) -> int:
         f = estimate(tokens=a.tokens, tok_per_s=a.tok_per_s, deadline_s=a.deadline,
                      requests=a.requests, margin=a.margin)
         return _emit(build([f], title="运行预算"), a.json, None)
+
+    if a.cmd == "postmortem":
+        kw = dict(title=a.title, date=a.date, impact=a.impact, root_cause=a.root_cause,
+                  root_cause_state=a.root_cause_state, actions=a.action,
+                  verification=a.verify, timeline=a.timeline)
+        if a.src:
+            md = from_triage_file(a.src, **kw)
+        else:
+            fs = []
+            if a.base_url:
+                fs.append(readiness(a.base_url))
+            fs.append(snapshot())
+            if a.log:
+                fs.append(analyse(Path(a.log).read_text(encoding="utf-8", errors="replace")))
+            md = build_postmortem(findings=fs, **kw)
+        if a.out:
+            Path(a.out).write_text(md, encoding="utf-8")
+            print("written: %s (%d bytes)" % (a.out, len(md.encode("utf-8"))))
+        else:
+            print(md)
+        return 0
 
     # triage
     fs = []

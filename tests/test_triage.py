@@ -326,3 +326,120 @@ def test_gpu_backend_falls_back_to_rocm_when_nvidia_missing(tmp_path):
     assert f.state == "OBSERVED"
     assert f.verdict == "OK"
     assert "rocm-smi" in f.evidence
+
+
+# ------------------------------------------------------------- postmortem
+def _pm_findings():
+    from llmtriage.budget import estimate
+    from llmtriage.logs import analyse
+
+    return [
+        analyse(FAKE_LEAD_LOG + CHILD_LOG_LINES),
+        estimate(tokens=12000, tok_per_s=4.32, deadline_s=4500, requests=2),
+    ]
+
+
+def test_postmortem_has_all_required_sections():
+    from llmtriage.postmortem import build_postmortem
+
+    md = build_postmortem(
+        title="vLLM 起服失败导致整批判分未产出",
+        findings=_pm_findings(),
+        date="2026-10-31",
+        impact="100 tasks 中 0 条结果落地",
+        root_cause="镜像内 flash_attn 缺少 CUDA 扩展，vLLM 引擎子进程 import 失败",
+        root_cause_state="CONFIRMED",
+        actions=["屏蔽残缺包 mv flash_attn flash_attn.disabled", "引擎退回 Triton Attention"],
+        verification=["重启后 /v1/models 返回 200 且列出模型"],
+    )
+    for section in ("## 摘要", "## 影响", "## 时间线", "## 分诊发现",
+                    "## 根因分析", "## 处置动作", "## 验证", "## 未解决项", "## 附录：证据清单"):
+        assert section in md, section
+    assert "CONFIRMED" in md
+
+
+def test_postmortem_unresolved_root_cause_stays_unresolved():
+    """不确定就说不知道——根因未定时报告必须自己写明，且不许出现'已修复'字样。"""
+    from llmtriage.postmortem import build_postmortem
+
+    md = build_postmortem(
+        title="任务在 4632s 后无痕终止",
+        findings=_pm_findings(),
+        date="2026-10-31",
+        impact="12 题中 2 题未完成",
+        root_cause="",                      # 没有根因就是没有
+        root_cause_state="UNRESOLVED",
+        actions=["增量落盘保住 10/12 题"],
+        verification=[],
+    )
+    assert "UNRESOLVED" in md
+    assert "已修复" not in md
+    assert "根因未确定" in md
+
+
+def test_postmortem_without_verification_is_flagged_not_assumed_fixed():
+    """没有验证证据时，报告必须显式标出'未验证'，不得默认通过。"""
+    from llmtriage.postmortem import build_postmortem
+
+    md = build_postmortem(
+        title="t", findings=_pm_findings(), date="2026-10-31",
+        impact="x", root_cause="y", root_cause_state="SUSPECTED",
+        actions=["a"], verification=[],
+    )
+    assert "未验证" in md
+    assert "SUSPECTED" in md
+
+
+def test_postmortem_carries_evidence_lines_from_findings():
+    from llmtriage.postmortem import build_postmortem
+
+    md = build_postmortem(
+        title="t", findings=_pm_findings(), date="2026-10-31",
+        impact="x", root_cause="y", root_cause_state="CONFIRMED",
+        actions=["a"], verification=["v"],
+    )
+    assert "libflash_attn_2_cuda.so" in md          # 子进程真异常必须进证据清单
+    assert "4.32 tok/s" in md                        # 预算算式必须进证据清单
+
+
+def test_postmortem_from_triage_json_roundtrip(tmp_path):
+    """能从 `llmtriage triage --json` 的产物直接生成复盘，不丢证据。"""
+    from llmtriage import postmortem
+
+    triage = {
+        "title": "LLM 推理部署分诊报告",
+        "findings": [
+            {"kind": "logs", "verdict": "FAKE_LEAD_SUBPROCESS_ERROR", "state": "OBSERVED",
+             "evidence": "(EngineCore_DP0 pid=48213) ImportError: libflash_attn_2_cuda.so"},
+            {"kind": "budget", "verdict": "NO_GO", "state": "OBSERVED",
+             "evidence": "12000 tok ÷ 4.32 tok/s = 2777.8s/请求"},
+        ],
+        "verdict": "FAKE_LEAD_SUBPROCESS_ERROR",
+        "state": "OBSERVED",
+    }
+    p = tmp_path / "triage.json"
+    p.write_text(json.dumps(triage, ensure_ascii=False), encoding="utf-8")
+
+    md = postmortem.from_triage_file(str(p), title="事件复盘", date="2026-10-31")
+    assert "libflash_attn_2_cuda.so" in md
+    assert "4.32 tok/s" in md
+    assert "UNRESOLVED" in md          # 只给分诊结果时，根因默认未确定
+
+
+def test_cli_postmortem_writes_file_and_exits(tmp_path):
+    triage = {
+        "title": "t", "verdict": "NO_GO", "state": "OBSERVED",
+        "findings": [{"kind": "budget", "verdict": "NO_GO", "state": "OBSERVED",
+                      "evidence": "12000 tok ÷ 4.32 tok/s"}],
+    }
+    src = tmp_path / "triage.json"
+    src.write_text(json.dumps(triage, ensure_ascii=False), encoding="utf-8")
+    out = tmp_path / "postmortem.md"
+    p = subprocess.run(
+        [sys.executable, "-m", "llmtriage", "postmortem",
+         "--from", str(src), "--title", "事件复盘", "--date", "2026-10-31", "--out", str(out)],
+        capture_output=True, text=True, timeout=60)
+    assert p.returncode == 0, p.stderr
+    assert out.exists()
+    text = out.read_text(encoding="utf-8")
+    assert "## 根因分析" in text

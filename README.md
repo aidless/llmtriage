@@ -54,7 +54,16 @@ llmtriage budget --tokens 12000 --tok-per-s 4.32 --deadline 7200
 llmtriage triage --base-url http://127.0.0.1:8000 --log vllm.log \
                  --tokens 12000 --tok-per-s 4.32 --deadline 4500 --requests 2 \
                  --out triage.md
+
+# Turn that report into a postmortem a reviewer will accept
+llmtriage postmortem --from triage.json --title "vLLM 起服失败，整批任务零产出" \
+                     --root-cause-state UNRESOLVED \
+                     --action "屏蔽残缺包" --verify "重启后 /v1/models 返回 200" \
+                     --out postmortem.md
 ```
+
+> Shell note: the exit codes are real, so `llmtriage logs ... && next-step` **stops** when a
+> problem is found (exit 1). Chain with `;` or `|| true` in scripts where that is intended.
 
 ### Real output (no hand-written examples)
 
@@ -82,6 +91,27 @@ $ llmtriage logs --file examples/vllm_fake_lead.log
 - **next_step**：以子进程异常为准去查（缺包/驱动/权限），不要照父进程提示去查
 # exit 1
 ```
+
+## Postmortem reports
+
+`llmtriage postmortem` turns findings into the document the JD-shaped work actually ends with:
+*"评估报告、优化建议和问题复盘"*. It is opinionated in one direction only — **it will not let an
+unknown root cause read as a fix**:
+
+- root cause is a **three-state declaration**: `CONFIRMED` (evidence closes the loop) /
+  `SUSPECTED` (clue, not closed) / `UNRESOLVED` (do not know). Selecting `UNRESOLVED` makes the
+  report say *"根因未确定：以下处置只用于限制影响，不是根因修复"*.
+- with no verification evidence, the 验证 section prints **未验证** and *"在补充验证前，不得把该事件
+  标记为已解决"*. The string `已修复` never appears in generated output — whether it is fixed is
+  answered by the verification section, not by wording.
+- every finding's raw `evidence` lines are copied verbatim into appendix 证据清单.
+
+Two generated examples ship in the repo, both produced by the CLI (not hand-written):
+
+| File | Shape |
+|---|---|
+| [`examples/postmortem-example.md`](examples/postmortem-example.md) | `CONFIRMED`, 4 timeline entries, verification filled |
+| [`examples/postmortem-unresolved-example.md`](examples/postmortem-unresolved-example.md) | `UNRESOLVED`, no verification → flagged, open items enumerated |
 
 ## The two contracts
 
@@ -134,8 +164,9 @@ Surveyed 2026-10-31 via the GitHub API; star counts move, so treat them as a tim
 ## Development
 
 ```bash
-python -m pytest -q      # 23 tests: NVIDIA + ROCm parsing, budget math, log triage (with a
-                         # negative control), a live OpenAI-stub probe, report schema, exit codes
+python -m pytest -q      # 29 tests: NVIDIA + ROCm parsing, budget math, log triage (with a
+                         # negative control), a live OpenAI-stub probe, report schema,
+                         # postmortem shape + honesty rules, exit codes
 ```
 
 Tests are written before the implementation (RED → GREEN). Two of them are counter-proofs rather
@@ -144,7 +175,9 @@ than happy paths:
 - the log classifier carries a **negative control**: a genuine parent-process traceback must *not*
   be reported as a fake lead;
 - the ROCm parser is fed the **same data in a reordered column layout** and must produce identical
-  results — that is what makes "map by column name" a claim instead of a comment.
+  results — that is what makes "map by column name" a claim instead of a comment;
+- the postmortem generator is asserted to **contain no `已修复`** when the root cause is unresolved,
+  and to print `未验证` when no verification evidence is supplied.
 
 ## License
 

@@ -19,8 +19,14 @@ First public cut. Scope: single host, OpenAI-compatible endpoint, zero runtime d
 - `gpu` backend fallback: `nvidia-smi` → `rocm-smi`. ROCm columns are mapped **by name**
   (order varies across `rocm-smi` versions); unrecognised schema returns `UNKNOWN`.
 
-Tests: 23, written before implementation (RED → GREEN), including a live OpenAI stub,
-a negative control for the log classifier, and a column-reordering counter-proof for
-the ROCm parser.
+- `postmortem`: findings → incident postmortem. Root cause is a three-state declaration
+  (`CONFIRMED` / `SUSPECTED` / `UNRESOLVED`); an unresolved root cause is stated as
+  "根因未确定" and the generated text never contains `已修复`; missing verification is
+  printed as `未验证` and blocks marking the incident resolved. Evidence lines are copied
+  verbatim into an appendix. Ships two CLI-generated examples.
+
+Tests: 29, written before implementation (RED → GREEN), including a live OpenAI stub,
+a negative control for the log classifier, a column-reordering counter-proof for the
+ROCm parser, and honesty assertions for the postmortem generator.
 
 Not verified: no run on physical AMD hardware yet (stubbed `rocm-smi` only).
