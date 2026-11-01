@@ -118,6 +118,15 @@ Two generated examples ship in the repo, both produced by the CLI (not hand-writ
 | [`examples/postmortem-example.md`](examples/postmortem-example.md) | `CONFIRMED`, 4 timeline entries, verification filled |
 | [`examples/postmortem-unresolved-example.md`](examples/postmortem-unresolved-example.md) | `UNRESOLVED`, no verification → flagged, open items enumerated |
 
+## What is verified, and on what
+
+| Claim | Evidence |
+|---|---|
+| ROCm parsing works on real hardware | one run on an AMD Radeon PRO W7900 instance: `rocm-smi 4.0.0` CSV → 49136 MB VRAM, 27 MB used, `DEGRADED`, exit 1. Raw capture kept as [`tests/fixtures/rocm_smi_w7900_2026-11-01.csv`](tests/fixtures/rocm_smi_w7900_2026-11-01.csv); write-up in [`docs/evidence-rocm-w7900-2026-11-01.md`](docs/evidence-rocm-w7900-2026-11-01.md) |
+| NVIDIA parsing | `nvidia-smi` CSV, covered by unit tests only — no hardware run recorded yet |
+| Fake-lead detection | captured from a real failed vLLM start (`examples/vllm_fake_lead.log`), not hand-written |
+| Not verified | the *in_use* path on AMD (needs a served model under load), multi-card, MIG, older `rocm-smi` versions |
+
 ## The two contracts
 
 ### 1. Exit codes (machine-usable in CI or a runbook)

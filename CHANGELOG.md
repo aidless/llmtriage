@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased — real-hardware ROCm evidence
+
+- The ROCm backend is no longer "written from imagination": one run on an AMD Radeon PRO
+  W7900 instance (rocm-smi 4.0.0 / ROCM-SMI-LIB 7.8.0) parsed the real CSV into
+  49136 MB VRAM / 27 MB used and returned `DEGRADED` with exit 1, as the contract says.
+  The raw capture is now a test fixture, so a unit-conversion regression turns red.
+- Measured detail worth keeping: `GPU use (%)` moved between 1 and 0 across two samples
+  two seconds apart on an idle card. The fixture test therefore pins magnitude, not a
+  specific number — pinning jitter makes a test a coin flip.
+- `docs/evidence-rocm-w7900-2026-11-01.md` records what this does **not** prove
+  (in-use path on AMD, multi-card, MIG, other rocm-smi versions).
+
 ## 0.1.1 — 2026-11-01
 
 Packaging only, no behaviour change — but one real defect fixed.

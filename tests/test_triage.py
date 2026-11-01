@@ -461,3 +461,29 @@ def test_reported_version_matches_pyproject():
     assert m, "pyproject.toml 里找不到 version 字段"
     assert llmtriage.__version__ == m.group(1), (
         "版本漂移：pyproject=%s, __version__=%s" % (m.group(1), llmtriage.__version__))
+
+
+# ---------------------------------------- real-hardware capture (W7900, ROCm)
+def test_real_w7900_rocm_capture_parses_with_correct_units():
+    """真机抓的 rocm-smi 输出（2026-11-01，AMD Radeon PRO W7900 / gfx1100）。
+
+    这份 fixture 不是手写的：它来自一台真实实例的
+    `rocm-smi --showmeminfo vram --showuse --csv`。它锁住两件事——
+    1) 列名组合（GPU use 在前、VRAM 列在后）真的会被认出来；
+    2) (B) 列是**字节**，必须换算成 MB：51522830336 B -> 49136 MB（约 47.98 GiB，
+       与这台卡的物理显存一致）。单位换算写错时这条会立刻红。
+    """
+    from llmtriage.gpu import classify_sample, parse_rocm_smi
+
+    text = (Path(__file__).parent / "fixtures" /
+            "rocm_smi_w7900_2026-11-01.csv").read_text(encoding="utf-8")
+    samples = parse_rocm_smi(text)
+    assert len(samples) == 1
+    s = samples[0]
+    assert s.index == 0
+    assert 49000 <= s.mem_total_mb <= 49200, s.mem_total_mb      # 48GB 卡 ≈ 49136 MB
+    assert 0 <= s.mem_used_mb < 512, s.mem_used_mb               # 空载几十 MB
+    # 利用率是每秒都在动的数：同一台机器相隔 2 秒的两次采样分别读到 0 和 1。
+    # 所以只断言"量级合理"，不钉死某个值——把抖动钉进断言，测试会变成看运气。
+    assert s.util_pct is None or 0 <= s.util_pct <= 5, s.util_pct
+    assert classify_sample(s) == "idle"                          # 空载 -> 不是 in_use
