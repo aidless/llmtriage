@@ -1,0 +1,6 @@
+include README.zh.md CHANGELOG.md
+recursive-include examples *
+recursive-include docs *
+recursive-include tests *
+prune examples/__pycache__
+global-exclude __pycache__ *.py[cod]

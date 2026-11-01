@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.1 — 2026-11-01
+
+Packaging only, no behaviour change — but one real defect fixed.
+
+- **Version drift removed**: `__version__` used to be a hard-coded string while
+  `pyproject.toml` carried its own `version`; after a bump the CLI would report the old
+  number, so users saw a version that was not the one they installed. Both now come from
+  one source (`pyproject.toml` when running from a source tree, the installed metadata
+  from a wheel), and a test fails if they ever diverge again.
+- `MANIFEST.in` puts `examples/`, `docs/` and `tests/` into the sdist, so the source
+  distribution can prove itself: `pip install -e ".[dev]" && pytest` passes from the
+  extracted sdist (30 tests).
+- `license = "MIT"` (SPDX) + `license-files`; the `License :: OSI Approved` classifier is
+  gone because setuptools rejects the two together.
+- Chinese README gained the install section it never had.
+
 ## 0.1.0 — 2026-10-31
 
 First public cut. Scope: single host, OpenAI-compatible endpoint, zero runtime dependencies.

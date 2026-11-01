@@ -6,7 +6,34 @@
 3. 退出码是契约：0 通过 / 1 发现问题 / 2 用法错误 / 3 数据不足。
 """
 
-__version__ = "0.1.0"
+def _detect_version() -> str:
+    """版本单一来源：打包元数据（pyproject.toml）。
+
+    曾经这里写死字符串，pyproject 里另写一份，结果发到 PyPI 后 `llmtriage --version`
+    报的是旧号——用户看到的版本和装到的版本不一致。现在两处只有一个来源：
+    - 源码树 / 可编辑安装：读同仓库的 pyproject.toml（改了立刻生效，不必重装）
+    - wheel 安装：读安装元数据（此时仓库根目录不在 site-packages 里）
+    """
+    import re
+    from pathlib import Path
+
+    try:
+        pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
+        if pyproject.is_file():
+            m = re.search(r'^version\s*=\s*"([^"]+)"',
+                          pyproject.read_text(encoding="utf-8"), re.M)
+            if m:
+                return m.group(1)
+    except Exception:
+        pass
+    try:
+        from importlib.metadata import version as _dist_version
+        return _dist_version("llmtriage")
+    except Exception:
+        return "0.0.0+unknown"
+
+
+__version__ = _detect_version()
 
 STATE_OBSERVED = "OBSERVED"
 STATE_INFERRED = "INFERRED"

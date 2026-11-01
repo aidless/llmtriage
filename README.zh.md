@@ -13,6 +13,13 @@
 | 悄悄退回 CPU | 吞吐极低（如 4.32 tok/s） | 每卡显存接近 0，token 其实在 CPU 上生成——该修层放置，不是砍 token 预算 |
 | 预算超墙 | 跑满墙钟却没落地任何结果 | tokens ÷ tok/s × 请求数 早已超过 deadline，这个数应该在**启动前**算 |
 
+## 安装
+
+```bash
+pip install llmtriage       # 从 PyPI；零运行时依赖（仅标准库）
+pip install -e ".[dev]"     # 从源码，带 pytest
+```
+
 ## 用法
 
 ```bash

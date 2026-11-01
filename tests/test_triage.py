@@ -13,6 +13,7 @@ import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
 
 import pytest
 
@@ -443,3 +444,20 @@ def test_cli_postmortem_writes_file_and_exits(tmp_path):
     assert out.exists()
     text = out.read_text(encoding="utf-8")
     assert "## 根因分析" in text
+
+
+def test_reported_version_matches_pyproject():
+    """`llmtriage --version` 说的版本必须是打包时用的那个。
+
+    两处各自硬编码版本时，发到 PyPI 后 CLI 会报一个旧号——用户看到的版本
+    和装到的版本不一致，是最难被察觉的一类静默缺陷。
+    """
+    import re
+    import llmtriage
+
+    root = Path(llmtriage.__file__).resolve().parent.parent
+    text = (root / "pyproject.toml").read_text(encoding="utf-8")
+    m = re.search(r'^version\s*=\s*"([^"]+)"', text, re.M)
+    assert m, "pyproject.toml 里找不到 version 字段"
+    assert llmtriage.__version__ == m.group(1), (
+        "版本漂移：pyproject=%s, __version__=%s" % (m.group(1), llmtriage.__version__))

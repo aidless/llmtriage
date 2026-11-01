@@ -4,16 +4,16 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "llmtriage"
-version = "0.1.0"
+version = "0.1.1"
 description = "Triage a broken LLM inference deployment in one command: GPU-real usage, fake-lead logs, readiness, runtime budget."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "Liu Zewen" }]
 keywords = ["llm", "inference", "vllm", "troubleshooting", "sre", "gpu", "observability"]
 classifiers = [
   "Programming Language :: Python :: 3",
-  "License :: OSI Approved :: MIT License",
   "Operating System :: POSIX :: Linux",
   "Topic :: System :: Monitoring",
 ]

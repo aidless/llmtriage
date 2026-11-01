@@ -6,7 +6,7 @@
 [![python](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-> Status: **0.1.0, early**. Works on a single host against an OpenAI-compatible endpoint. No Kubernetes, no Prometheus, no cluster mode — see [Scope and non-goals](#scope-and-non-goals).
+> Status: **0.1.1, early**. Works on a single host against an OpenAI-compatible endpoint. No Kubernetes, no Prometheus, no cluster mode — see [Scope and non-goals](#scope-and-non-goals).
 
 ---
 
@@ -29,8 +29,13 @@ Three failure patterns kept costing hours on real deployments, and each one is i
 ## Install
 
 ```bash
-pip install -e ".[dev]"     # from a clone; zero runtime dependencies (stdlib only)
+pip install llmtriage        # from PyPI, zero runtime dependencies (stdlib only)
+pip install -e ".[dev]"      # from a source clone, with pytest
 ```
+
+Both dists are verified before release: `twine check` passes, the wheel installs into a
+clean venv, and the **sdist proves itself** — `pip install -e ".[dev]" && pytest` passes
+from the extracted sdist, examples included.
 
 ## Usage
 
