@@ -15,6 +15,17 @@ def _get_json(url: str, timeout: float):
         return resp.status, json.loads(resp.read().decode("utf-8"))
 
 
+def fetch_metrics_text(base_url: str, timeout: float = 5.0) -> str:
+    """取 Prometheus 文本格式的 /metrics。失败抛 RuntimeError，由 CLI 转成 UNKNOWN。"""
+    url = base_url.rstrip("/") + "/metrics"
+    req = urllib.request.Request(url, headers={"Accept": "text/plain"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:   # noqa: S310 (本地内网端点)
+            return resp.read().decode("utf-8", "replace")
+    except Exception as exc:                                          # noqa: BLE001
+        raise RuntimeError("%s 取不到：%s" % (url, exc)) from exc
+
+
 def readiness(base_url: str, timeout: float = 5.0) -> Finding:
     """GET /v1/models。连不上/非 200 ⇒ NOT_READY（state=OBSERVED，因为这是实测结果）。"""
     url = base_url.rstrip("/") + "/v1/models"

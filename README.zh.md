@@ -27,8 +27,18 @@ llmtriage probe --base-url http://127.0.0.1:8000 --measure --model qwen3_4b
 llmtriage gpu
 llmtriage logs --file examples/vllm_fake_lead.log
 llmtriage budget --tokens 12000 --tok-per-s 4.32 --deadline 4500 --requests 2
+# 服务是在排队、还是 KV 缓存要打满？（只读 /metrics）
+llmtriage metrics --url http://127.0.0.1:8000
+llmtriage metrics --file metrics.txt        # 离线分析：贴一份已抓下来的文本
+
+# 不看 SLO 的 tok/s 没有意义：多少比例的请求真的同时满足了 TTFT 与 TPOT
+llmtriage slo --csv samples.csv --ttft-slo 1.0 --tpot-slo 0.1
+
+# 把上面收集到的证据压成"最可能的原因 + 下一句敲什么"
+llmtriage explain --log vllm.log --metrics metrics.txt
+
 llmtriage triage --base-url http://127.0.0.1:8000 --log vllm.log \
-                 --tokens 12000 --tok-per-s 4.32 --deadline 4500 --requests 2 --out triage.md
+                 --tokens 12000 --tok-per-s 4.32 --deadline 4500 --requests 2 --explain --out triage.md
 # 把分诊结果变成可直接交付的事故复盘
 llmtriage postmortem --from triage.json --title "事件名" --root-cause-state UNRESOLVED \
                      --action "限制影响的动作" --verify "确认恢复的证据" --out postmortem.md
@@ -36,6 +46,23 @@ llmtriage postmortem --from triage.json --title "事件名" --root-cause-state U
 
 > 注意：退出码是真的，所以 `llmtriage logs ... && 下一步` 在发现问题时会**中断**（exit 1）。
 > 脚本里需要继续执行就用 `;` 或 `|| true`。
+
+## 指标、SLO 与"下一步"
+
+三个新子命令都**只读、可离线跑**，CI 里没有 GPU 也能覆盖。
+
+- `llmtriage metrics --url|--file`：解析 Prometheus 文本，判 `SATURATED`（排队 + KV 打满）/
+  `KV_PRESSURE` / `QUEUE_BACKLOG` / `OK` / `UNKNOWN`（缺 KV 指标时**不**判通过）。
+  兼容 vLLM 的指标改名（`gpu_cache_usage_perc` → `kv_cache_usage_perc`），并跨 engine 求和。
+- `llmtriage slo --csv --ttft-slo --tpot-slo`：算 **goodput**（同时满足 TTFT 与 TPOT 的请求占比，
+  定义取自 DistServe arXiv 2401.09670）、p50/p95/p99，并指出是 TTFT 还是 TPOT 在拖后腿。
+- `llmtriage explain`：把证据压成**排序假设**，每条都必须写明来自哪条 finding，并给一句可执行的
+  检查命令。没有证据就不许产出假设（有测试钉住）。
+
+阈值（KV 0.90 / 排队 8 / 显存 15%…）都是**我们定的启发式，不是论文给出的分界线**；
+换集群先测自己的基线。
+
+两个可以直接试的样本：`examples/vllm_metrics_saturated.txt`、`examples/slo_samples.csv`。
 
 ## 事故复盘报告
 

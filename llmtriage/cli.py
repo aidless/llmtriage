@@ -8,12 +8,15 @@ from pathlib import Path
 
 from . import __version__
 from .budget import estimate
+from .explain import explain, format_hypotheses
 from .finding import SEVERITY
 from .gpu import snapshot
 from .logs import analyse
+from .metrics import snapshot_metrics
 from .postmortem import build_postmortem, from_triage_file
-from .probe import measure_throughput, readiness
+from .probe import fetch_metrics_text, measure_throughput, readiness
 from .report import build
+from .slo import evaluate_slo, parse_samples_csv
 
 OK_VERDICTS = {"OK", "READY", "GO", "MEASURED", "NO_ERROR_FOUND"}
 
@@ -58,6 +61,26 @@ def main(argv: list[str] | None = None) -> int:
     p_bud.add_argument("--margin", type=float, default=0.2)
     p_bud.add_argument("--json", action="store_true")
 
+    p_met = sub.add_parser("metrics", help="解析 /metrics：排队 / KV 占用 / 抢占，判是否饱和")
+    p_met.add_argument("--url", help="服务根地址，如 http://127.0.0.1:8000")
+    p_met.add_argument("--file", help="已抓下来的 Prometheus 文本（离线分析用）")
+    p_met.add_argument("--json", action="store_true")
+    p_met.add_argument("--out")
+
+    p_slo = sub.add_parser("slo", help="按 TTFT/TPOT 目标折算 goodput（不是 tok/s）")
+    p_slo.add_argument("--csv", required=True, help="两列 ttft_s,tpot_s 的 CSV")
+    p_slo.add_argument("--ttft-slo", type=float, required=True, dest="ttft_slo")
+    p_slo.add_argument("--tpot-slo", type=float, required=True, dest="tpot_slo")
+    p_slo.add_argument("--target-goodput", type=float, default=0.99, dest="target_goodput")
+    p_slo.add_argument("--json", action="store_true")
+    p_slo.add_argument("--out")
+
+    p_exp = sub.add_parser("explain", help="把分诊结论压成排序假设 + 下一句检查")
+    p_exp.add_argument("--from", dest="src", help="triage --json 的产物")
+    p_exp.add_argument("--log")
+    p_exp.add_argument("--metrics")
+    p_exp.add_argument("--out")
+
     p_tri = sub.add_parser("triage", help="一键跑全部可用检查并出报告")
     p_tri.add_argument("--base-url")
     p_tri.add_argument("--model")
@@ -68,6 +91,10 @@ def main(argv: list[str] | None = None) -> int:
     p_tri.add_argument("--requests", type=int, default=1)
     p_tri.add_argument("--json", action="store_true")
     p_tri.add_argument("--out", help="把 Markdown 报告写到文件")
+    p_tri.add_argument("--no-metrics", action="store_true", dest="no_metrics",
+                       help="不抓 /metrics（默认给了 --base-url 就会抓）")
+    p_tri.add_argument("--explain", action="store_true",
+                       help="在报告末尾附上排序假设与下一句检查")
 
     p_pm = sub.add_parser("postmortem", help="由分诊结果生成事故复盘（根因三态，不猜）")
     p_pm.add_argument("--from", dest="src", help="triage --json 的产物；省略则用 --log/--base-url 现跑")
@@ -127,18 +154,85 @@ def main(argv: list[str] | None = None) -> int:
             print(md)
         return 0
 
+    if a.cmd == "metrics":
+        if a.file:
+            text = Path(a.file).read_text(encoding="utf-8", errors="replace")
+        elif a.url:
+            try:
+                text = fetch_metrics_text(a.url)
+            except RuntimeError as exc:
+                f = _unknown("metrics", str(exc))
+                return _emit(build([f], title="指标快照"), a.json, a.out)
+        else:
+            ap.error("metrics 需要 --url 或 --file")
+        return _emit(build([snapshot_metrics(text)], title="指标快照"), a.json, a.out)
+
+    if a.cmd == "slo":
+        try:
+            samples = parse_samples_csv(Path(a.csv).read_text(encoding="utf-8", errors="replace"))
+            f = evaluate_slo(samples, ttft_slo_s=a.ttft_slo, tpot_slo_s=a.tpot_slo,
+                             target_goodput=a.target_goodput)
+        except ValueError as exc:
+            ap.error(str(exc))
+        return _emit(build([f], title="SLO goodput"), a.json, a.out)
+
+    if a.cmd == "explain":
+        fs = _collect(a)
+        hyp = explain(fs)
+        print(format_hypotheses(hyp))
+        if a.out:
+            Path(a.out).write_text(format_hypotheses(hyp), encoding="utf-8")
+        return 0 if hyp else 3
+
     # triage
     fs = []
     if a.base_url:
         fs.append(readiness(a.base_url))
+        if not a.no_metrics:
+            try:
+                fs.append(snapshot_metrics(fetch_metrics_text(a.base_url)))
+            except RuntimeError as exc:
+                fs.append(_unknown("metrics", str(exc)))
     fs.append(snapshot())
     if a.log:
         fs.append(analyse(Path(a.log).read_text(encoding="utf-8", errors="replace")))
     if a.tokens and a.deadline:
         fs.append(estimate(tokens=a.tokens, tok_per_s=a.tok_per_s, deadline_s=a.deadline,
                            requests=a.requests))
-    return _emit(build(fs, title="LLM 推理部署分诊报告"), a.json, a.out)
+    rep = build(fs, title="LLM 推理部署分诊报告")
+    if a.explain:
+        rep["hypotheses"] = [h.to_dict() for h in explain(fs)]
+        rep["markdown"] = rep["markdown"] + "\n\n" + format_hypotheses(explain(fs))
+    return _emit(rep, a.json, a.out)
 
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+def _unknown(kind: str, evidence: str):
+    from .finding import Finding
+    return Finding(kind=kind, verdict="UNKNOWN", state="UNKNOWN", evidence=evidence)
+
+
+def _collect(a) -> list:
+    """explain 的取证：--from 读 triage 产物，否则现跑能跑的那几项。"""
+    fs = []
+    if getattr(a, "src", None):
+        data = json.loads(Path(a.src).read_text(encoding="utf-8"))
+        fs.extend(_findings_from_json(data))
+    if getattr(a, "log", None):
+        fs.append(analyse(Path(a.log).read_text(encoding="utf-8", errors="replace")))
+    if getattr(a, "metrics", None):
+        fs.append(snapshot_metrics(Path(a.metrics).read_text(encoding="utf-8", errors="replace")))
+    return fs
+
+
+def _findings_from_json(data) -> list:
+    from .finding import Finding
+    out = []
+    for d in data.get("findings", []) if isinstance(data, dict) else []:
+        known = {k: v for k, v in d.items()
+                 if k in Finding.__dataclass_fields__}
+        out.append(Finding(**known))
+    return out
