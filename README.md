@@ -8,7 +8,7 @@
 
 > Status: **0.1.1, early**. Works on a single host against an OpenAI-compatible endpoint. No Kubernetes, no Prometheus, no cluster mode — see [Scope and non-goals](#scope-and-non-goals).
 
-**Verified now:** `pytest -q` → **60 passed** · `llmtriage logs --file examples/vllm_fake_lead.log`
+**Verified now:** `pytest -q` → **57 passed** · `llmtriage logs --file examples/vllm_fake_lead.log`
 resolves the parent's `Failed core proc(s): {}` to the child process's
 `ImportError: libflash_attn_2_cuda.so` instead of following the fake lead.
 
@@ -242,7 +242,7 @@ Surveyed 2026-10-31 via the GitHub API; star counts move, so treat them as a tim
 ## Development
 
 ```bash
-python -m pytest -q      # 29 tests: NVIDIA + ROCm parsing, budget math, log triage (with a
+python -m pytest -q      # 57 tests: NVIDIA + ROCm parsing, budget math, log triage (with a
                          # negative control), a live OpenAI-stub probe, report schema,
                          # postmortem shape + honesty rules, exit codes
 ```
