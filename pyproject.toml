@@ -28,6 +28,12 @@ llmtriage = "llmtriage.cli:main"
 [project.urls]
 Homepage = "https://github.com/aidless/llmtriage"
 
+[tool.llmtriage]
+# "source": git or editable install only. Not published to PyPI.
+# Change to "pypi" only after https://pypi.org/pypi/llmtriage/json
+# returns this version. tests/test_readme_honesty.py reads this field.
+distribution = "source"
+
 [tool.setuptools.packages.find]
 include = ["llmtriage*"]
 

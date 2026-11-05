@@ -273,8 +273,9 @@ def test_cli_gpu_reads_fake_nvidia_smi(tmp_path):
 
 
 # ---------------------------------------------------------- ROCm (AMD) backend
-# 真实环境是 AMD Radeon PRO W7900 / gfx1100，nvidia-smi 不存在。
-# rocm-smi 的列名与顺序随版本变化 ⇒ 解析必须**按列名**映射，不能按位置。
+# Synthetic CSV, not a hardware capture. rocm-smi column order varies by
+# version, so parsing maps by header name. The only stored hardware CSV is
+# tests/fixtures/rocm_smi_w7900_2026-11-01.csv (idle card; no product name).
 ROCM_CSV = """device,VRAM Total Memory (B),VRAM Total Used Memory (B),GPU use (%)
 card0,51091324928,45875200,97
 card1,51091324928,0,0
@@ -475,8 +476,8 @@ def test_cli_postmortem_writes_file_and_exits(tmp_path):
 def test_reported_version_matches_pyproject():
     """`llmtriage --version` 说的版本必须是打包时用的那个。
 
-    两处各自硬编码版本时，发到 PyPI 后 CLI 会报一个旧号——用户看到的版本
-    和装到的版本不一致，是最难被察觉的一类静默缺陷。
+    两处各自硬编码版本时，CLI 会报一个和 pyproject 不一致的号。
+    用户看到的版本和正在运行的代码不一致，是最难被察觉的一类静默缺陷。
     """
     import re
     import llmtriage
@@ -491,13 +492,15 @@ def test_reported_version_matches_pyproject():
 
 # ---------------------------------------- real-hardware capture (W7900, ROCm)
 def test_real_w7900_rocm_capture_parses_with_correct_units():
-    """真机抓的 rocm-smi 输出（2026-11-01，AMD Radeon PRO W7900 / gfx1100）。
+    """Replay the CSV stored with docs/evidence-rocm-w7900-2026-11-01.md.
 
-    这份 fixture 不是手写的：它来自一台真实实例的
-    `rocm-smi --showmeminfo vram --showuse --csv`。它锁住两件事——
-    1) 列名组合（GPU use 在前、VRAM 列在后）真的会被认出来；
-    2) (B) 列是**字节**，必须换算成 MB：51522830336 B -> 49136 MB（约 47.98 GiB，
-       与这台卡的物理显存一致）。单位换算写错时这条会立刻红。
+    The fixture is the parser input from that write-up (one idle card, VRAM in
+    bytes). The CSV does not name the product or a gfx target; the W7900 name
+    is the rented instance type in the write-up, not a column in this file.
+    This test locks two facts:
+    1) that column set is recognised;
+    2) total/used are bytes: 51522830336 B -> 49136 MB exactly.
+    Idle classification follows. It does not execute rocm-smi.
     """
     from llmtriage.gpu import classify_sample, parse_rocm_smi
 

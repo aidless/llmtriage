@@ -9,8 +9,8 @@
 def _detect_version() -> str:
     """版本单一来源：打包元数据（pyproject.toml）。
 
-    曾经这里写死字符串，pyproject 里另写一份，结果发到 PyPI 后 `llmtriage --version`
-    报的是旧号——用户看到的版本和装到的版本不一致。现在两处只有一个来源：
+    两处各写一个版本号时，`llmtriage --version` 可以和正在运行的代码不一致。
+    现在只有一个来源：
     - 源码树 / 可编辑安装：读同仓库的 pyproject.toml（改了立刻生效，不必重装）
     - wheel 安装：读安装元数据（此时仓库根目录不在 site-packages 里）
     """
