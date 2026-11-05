@@ -10,15 +10,25 @@
 | 现象 | 你看到的 | 真实原因 |
 |---|---|---|
 | 假线索 | `Engine core initialization failed. Failed core proc(s): {}` | 真异常在**子进程** stderr（`EngineCore_DP0 pid=…`），照父进程提示查会走很远弯路 |
-| 悄悄退回 CPU | 吞吐极低（如 4.32 tok/s） | 每卡显存接近 0，token 其实在 CPU 上生成——该修层放置，不是砍 token 预算 |
+| 悄悄退回 CPU | 吞吐极低（如 4.32 tok/s） | 每卡显存接近 0。检查会给 `DEGRADED`，并**提示** token 可能在 CPU 上；它没有测量 CPU |
 | 预算超墙 | 跑满墙钟却没落地任何结果 | tokens ÷ tok/s × 请求数 早已超过 deadline，这个数应该在**启动前**算 |
 
 ## 安装
 
+**没有发布到 PyPI。** 2026-11-05 查询 `https://pypi.org/pypi/llmtriage/json` 得到 **404**。`pyproject.toml` 里 `[tool.llmtriage] distribution = "source"`。索引上没有这个包。`tests/test_readme_honesty.py` 会在 README 写出索引安装命令、而该字段仍是 `"source"` 时失败。
+
 ```bash
-pip install llmtriage       # 从 PyPI；零运行时依赖（仅标准库）
-pip install -e ".[dev]"     # 从源码，带 pytest
+git clone https://github.com/aidless/llmtriage.git
+cd llmtriage
+python -m pip install -e ".[dev]"   # 这份检出，含 pytest
+python -m pip install -e .          # 这份检出，只要命令
 ```
+
+```bash
+python -m pip install "git+https://github.com/aidless/llmtriage.git"
+```
+
+运行时依赖只有标准库。CI 做的是可编辑安装加 `pytest`，不构建 wheel，也不上传。更完整的证据边界和失败模式在 [README.md](README.md) 的 Evidence boundaries 与 Failure modes。
 
 ## 用法
 
@@ -84,22 +94,35 @@ llmtriage postmortem --from triage.json --title "事件名" --root-cause-state U
 **退出码**：`0` 通过 / `1` 发现问题 / `2` 用法错误 / `3` **数据不足（UNKNOWN，绝不静默当通过）**
 
 **三态证据**：`OBSERVED` 本次实测（附命令与原始输出）/ `INFERRED` 由实测推断 / `UNKNOWN` 数据不足。
+报告聚合器会保留 finding 上的 `INFERRED`，但**当前没有子命令会写出这个标签**，实际只有 `OBSERVED` 和 `UNKNOWN`。CPU 那句提示挂在 `OBSERVED` 的 GPU 结论上，不是一条 `INFERRED` 结论。
 日志干净只会报 `NO_ERROR_FOUND`，不会报"健康"；没有 `nvidia-smi` 只会报 `UNKNOWN`，不会报"0 张卡"。
 
 ## 不做什么
 
 不是 benchmark（用 inference-perf / llmperf）、不是监控（用 nvitop / nvtop / dcgm-exporter）、
-不是容量仿真器。`gpu` 先试 `nvidia-smi`，找不到再试 `rocm-smi`；ROCm 解析**按列名而非列位置**映射（`rocm-smi` 各版本列序会变），列名认不出时返回 UNKNOWN 而不是猜一个数；`amd-smi` 尚未接入；**只用桩程序验证过，未在真实 AMD 硬件上实跑**；
+不是容量仿真器。`gpu` 先试 `nvidia-smi`，找不到再试 `rocm-smi`；两个都在 `PATH` 上时只读 NVIDIA。ROCm 解析**按列名而非列位置**映射，列名认不出时返回 UNKNOWN。`amd-smi` 未接入。
+
+2026-11-01 的记录是一份空载 CSV：[`tests/fixtures/rocm_smi_w7900_2026-11-01.csv`](tests/fixtures/rocm_smi_w7900_2026-11-01.csv)，说明在 [`docs/evidence-rocm-w7900-2026-11-01.md`](docs/evidence-rocm-w7900-2026-11-01.md)。CI **重放**这份 CSV，不执行 `rocm-smi`。CSV 里没有产品名；W7900 是租用的实例类型，`rocm-smi --showproductname` 没有采集，`rocminfo` 贴出来的 Marketing Name 是 CPU。AMD 上的 `in_use`（有模型在跑）、多卡、MIG、NVIDIA 真机，仓库里都没有捕获。
+
 `probe --measure` 是单请求口径，只能当预算输入，不能当服务吞吐上限。
 
 生态调研与差异化依据见 [docs/landscape-2026-10-31.md](docs/landscape-2026-10-31.md)。
 
+## 失败模式
+
+结论可以在证据行被原样抄下时仍然是错的：
+
+1. **日志模式很窄。** 认不出的栈、被截断的文件、没有 traceback 的父进程错误，会变成 `UNKNOWN` 或 `NO_ERROR_FOUND`。`NO_ERROR_FOUND` 不是「健康」。
+2. **GPU 空闲是弱信号。** 显存 <15% 且利用率 <20% 就标 `DEGRADED`，并附上「可能在 CPU 上算」的提示。阈值是 `gpu.py` 里的常数，不是一次对 CPU 的测量。
+3. **ROCm 夹具只有一条空载样本。** 不覆盖 `in_use`、多卡、MIG、别的 `rocm-smi` 版本。产品名不在文件里。
+4. **预算相信你喂进去的 tok/s。** 没测到或不是正数时退出码是 3，不是通过。20% 余量是常数。`probe --measure` 是单请求。
+5. **指标和 SLO 的分界线是本地启发式**（KV 0.90、排队 8），不是论文给出的标准。缺 KV 序列是 `UNKNOWN`，不是 `OK`。
+6. **假设是下一句检查，不是修复。** 退出码 1 表示某项检查触发了，不是生产根因，也不该直接拿去告警。
+
 ## 测试
 
-```bash
-python -m pytest -q     # 29 项
-```
+CI（[`.github/workflows/ci.yml`](.github/workflows/ci.yml)）在 Ubuntu 上对 Python 3.10 和 3.12 执行可编辑安装，然后 `python -m pytest -q`。这里不写死条数：同一页曾经同时出现过 29 和别的数字。这个 job 看不到 GPU。
 
-测试先于实现（RED → GREEN），其中两条是反证而非顺证：①日志分类器——父进程自身 traceback 不得被判为假线索；②ROCm 解析器——同一份数据换一种列顺序必须解出完全相同的结果，这才让「按列名映射」成为可检验的断言而不是一句注释；③事故复盘生成器——根因 UNRESOLVED 时输出里**不得出现「已修复」**，无验证证据时必须打印「未验证」。
+测试先于实现（RED → GREEN）。反例包括：父进程自身 traceback 不得判成假线索；同一份 ROCm 数据换列序必须解出相同结果；根因 UNRESOLVED 时输出不得出现「已修复」。
 
 License: MIT
