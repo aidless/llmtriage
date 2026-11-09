@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased — install path and evidence claims
+
+- READMEs no longer tell anyone to install this project from PyPI. `https://pypi.org/pypi/llmtriage/json` returned 404 on 2026-11-05, and `[tool.llmtriage] distribution` is `"source"`. `tests/test_readme_honesty.py` fails if an index install line comes back while that field stays `"source"`.
+- Removed the README sentence that said physical AMD hardware had not been run (and the Chinese equivalent). The stored record is one idle `rocm-smi` CSV plus `docs/evidence-rocm-w7900-2026-11-01.md`. The README now separates that replay (observed in CI) from the W7900 marketing name (inferred from the rented instance type; `rocm-smi --showproductname` was not captured) and from `in_use`, multi-GPU, MIG, and NVIDIA hardware (unknown). No gfx target is claimed.
+- Status line tracks `pyproject.toml` (0.2.0). Dropped the frozen `pytest` count and the "verified before release" packaging sentence. CI installs the tree and runs pytest; it does not build or upload a wheel.
+- Short failure-modes section: what a green or red verdict does not prove.
+
 ## 0.2.0 — 2026-11-01
 
 Three checks that turn raw signals into conclusions, plus the small step from a finding to
