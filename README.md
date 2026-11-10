@@ -37,13 +37,14 @@ Three failure patterns kept costing hours on real deployments, and each one is i
 ## Install
 
 ```bash
-pip install llmtriage        # from PyPI, zero runtime dependencies (stdlib only)
+git clone https://github.com/aidless/llmtriage.git && cd llmtriage
 pip install -e ".[dev]"      # from a source clone, with pytest
 ```
 
-Both dists are verified before release: `twine check` passes, the wheel installs into a
-clean venv, and the **sdist proves itself** — `pip install -e ".[dev]" && pytest` passes
-from the extracted sdist, examples included.
+> Not on PyPI yet — the install above is the supported route. The dists are
+> verified before release: `twine check` passes, the wheel installs into a
+> clean venv, and the **sdist proves itself** — `pip install -e ".[dev]" && pytest` passes
+> from the extracted sdist, examples included.
 
 ## Usage
 
