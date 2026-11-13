@@ -316,17 +316,43 @@ def test_parse_rocm_smi_unknown_schema_raises_not_guesses():
 
 
 def test_gpu_backend_falls_back_to_rocm_when_nvidia_missing(tmp_path):
-    """PATH 里只有 rocm-smi、没有 nvidia-smi 时，必须走 ROCm 分支。"""
-    stub = tmp_path / "rocm-smi"
+    """PATH 里只有 rocm-smi、没有 nvidia-smi 时，必须走 ROCm 分支。
+
+    隔离纪律：PATH 只能是本用例自造的目录。早先这里写成 `<tmp>:/usr/bin:/bin`，
+    在装了 nvidia-smi 的机器上会走 NVIDIA 分支判 UNKNOWN —— 同一个测试在 CI 绿、
+    在本机红，等于让宿主环境决定判据。2026-11-01 本机实测踩到。
+    """
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    stub = bin_dir / "rocm-smi"
     stub.write_text("#!/bin/sh\nprintf 'device,VRAM Total Memory (B),VRAM Total Used Memory (B),GPU use (%%)\\n"
                     "card0,51091324928,45875200,97\\n'\n")
     stub.chmod(0o755)
     from llmtriage.gpu import snapshot
 
-    f = snapshot(env_path="%s:/usr/bin:/bin" % tmp_path)
+    f = snapshot(env_path=str(bin_dir))
     assert f.state == "OBSERVED"
     assert f.verdict == "OK"
     assert "rocm-smi" in f.evidence
+
+
+def test_gpu_prefers_nvidia_when_both_backends_available(tmp_path):
+    """两条后端都在时必须走 NVIDIA —— 反证"永远走 ROCm"这类退化。"""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "nvidia-smi").write_text(
+        "#!/bin/sh\nprintf '0, 4096, 49140, 88\\n'\n")
+    (bin_dir / "rocm-smi").write_text(
+        "#!/bin/sh\nprintf 'device,VRAM Total Memory (B),VRAM Total Used Memory (B),GPU use (%%)\\n"
+        "card0,51091324928,45875200,97\\n'\n")
+    for f in bin_dir.iterdir():
+        f.chmod(0o755)
+    from llmtriage.gpu import snapshot
+
+    f = snapshot(env_path=str(bin_dir))
+    assert f.state == "OBSERVED"
+    assert f.detail["backend"] == "nvidia-smi"
+    assert f.detail["gpus"][0]["mem_total_mb"] == 49140
 
 
 # ------------------------------------------------------------- postmortem

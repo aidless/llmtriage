@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "llmtriage"
-version = "0.1.1"
+version = "0.2.0"
 description = "Triage a broken LLM inference deployment in one command: GPU-real usage, fake-lead logs, readiness, runtime budget."
 readme = "README.md"
 requires-python = ">=3.10"

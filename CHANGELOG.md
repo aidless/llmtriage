@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.2.0 — 2026-11-01
+
+Three checks that turn raw signals into conclusions, plus the small step from a finding to
+an actionable next command. All three are offline-testable, so CI covers them without a GPU.
+
+- **`metrics`** — parses Prometheus text from `/metrics` (or a saved file) into a verdict:
+  `SATURATED` (queueing *and* KV cache nearly full), `KV_PRESSURE`, `QUEUE_BACKLOG`, `OK`,
+  or `UNKNOWN` when the KV metric is absent. Tolerates the vLLM metric rename
+  (`gpu_cache_usage_perc` → `kv_cache_usage_perc`) and sums across engines; summing across
+  labels is the difference between "47 waiting" and "7 waiting".
+  Thresholds (0.90 / 8) are **heuristics, not published cut-offs**.
+- **`slo`** — reads `ttft_s,tpot_s` samples and reports **goodput** (fraction of requests
+  meeting TTFT *and* TPOT, after DistServe arXiv 2401.09670), p50/p95/p99, and which
+  constraint binds. `tok/s` is not a conclusion: it is meaningless without the SLO it was
+  measured under.
+- **`explain`** — turns findings into ranked hypotheses, each carrying the finding kinds it
+  came from and one executable `next_check`. A hypothesis without evidence cannot be
+  produced (tested), and there are only two confidence levels — no fake percentages.
+- `triage` now pulls `/metrics` when given `--base-url` (`--no-metrics` opts out) and appends
+  the hypothesis block with `--explain`.
+- Fixed a test that was **red locally and green in CI**: the ROCm fallback test hard-coded
+  `:$PATH` including `/usr/bin`, so a machine with a real `nvidia-smi` took the NVIDIA branch.
+  It now uses an isolated bin directory, and a second test pins the opposite direction
+  (both backends present → NVIDIA wins).
+- `docs/roadmap-2026-11-01-expand-then-simplify.md` records the paper→feature map, what we
+  deliberately did **not** adopt, and the simplification pass planned next.
+
 ## Unreleased — real-hardware ROCm evidence
 
 - The ROCm backend is no longer "written from imagination": one run on an AMD Radeon PRO

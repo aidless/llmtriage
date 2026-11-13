@@ -3,10 +3,18 @@
 **Triage a broken LLM inference deployment in one command.** Readiness, *is the GPU actually doing the work*, *is that error message a fake lead*, and *will this batch finish before the deadline* — with an evidence line for every verdict.
 
 [![ci](https://github.com/aidless/llmtriage/actions/workflows/ci.yml/badge.svg)](https://github.com/aidless/llmtriage/actions/workflows/ci.yml)
+
+> ⬇️ Quickstart 实录（本机录制，非模拟输出）:
+
+![quickstart demo](docs/demo.gif)
 [![python](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 > Status: **0.1.1, early**. Works on a single host against an OpenAI-compatible endpoint. No Kubernetes, no Prometheus, no cluster mode — see [Scope and non-goals](#scope-and-non-goals).
+
+**Verified now:** `pytest -q` → **57 passed** · `llmtriage logs --file examples/vllm_fake_lead.log`
+resolves the parent's `Failed core proc(s): {}` to the child process's
+`ImportError: libflash_attn_2_cuda.so` instead of following the fake lead.
 
 ---
 
@@ -29,13 +37,14 @@ Three failure patterns kept costing hours on real deployments, and each one is i
 ## Install
 
 ```bash
-pip install llmtriage        # from PyPI, zero runtime dependencies (stdlib only)
+git clone https://github.com/aidless/llmtriage.git && cd llmtriage
 pip install -e ".[dev]"      # from a source clone, with pytest
 ```
 
-Both dists are verified before release: `twine check` passes, the wheel installs into a
-clean venv, and the **sdist proves itself** — `pip install -e ".[dev]" && pytest` passes
-from the extracted sdist, examples included.
+> Not on PyPI yet — the install above is the supported route. The dists are
+> verified before release: `twine check` passes, the wheel installs into a
+> clean venv, and the **sdist proves itself** — `pip install -e ".[dev]" && pytest` passes
+> from the extracted sdist, examples included.
 
 ## Usage
 
@@ -55,10 +64,20 @@ llmtriage logs --file examples/vllm_fake_lead.log
 # 5. Will this batch finish before the deadline?
 llmtriage budget --tokens 12000 --tok-per-s 4.32 --deadline 7200
 
-# Everything at once, as a Markdown report you can paste into an incident ticket
+# 6. Is the service queueing or thrashing its KV cache? (reads /metrics, no writes)
+llmtriage metrics --url http://127.0.0.1:8000
+llmtriage metrics --file metrics.txt        # offline: paste a saved capture
+
+# 7. Throughput means nothing without SLOs: what fraction of requests actually met TTFT+TPOT?
+llmtriage slo --csv samples.csv --ttft-slo 1.0 --tpot-slo 0.1
+
+# 8. Given the evidence collected above, what is the most likely cause and what do I check next?
+llmtriage explain --log vllm.log --metrics metrics.txt
+
+# Everything at once
 llmtriage triage --base-url http://127.0.0.1:8000 --log vllm.log \
                  --tokens 12000 --tok-per-s 4.32 --deadline 4500 --requests 2 \
-                 --out triage.md
+                 --explain --out triage.md
 
 # Turn that report into a postmortem a reviewer will accept
 llmtriage postmortem --from triage.json --title "vLLM 起服失败，整批任务零产出" \
@@ -97,6 +116,54 @@ $ llmtriage logs --file examples/vllm_fake_lead.log
 # exit 1
 ```
 
+```console
+$ llmtriage metrics --file examples/vllm_metrics_saturated.txt
+# 指标快照
+
+**总体结论：`SATURATED`（证据状态：OBSERVED）** —— 1 项异常（metrics）
+
+## metrics → `SATURATED`（OBSERVED）
+
+证据：
+
+```
+vllm:num_requests_running{model_name="qwen3_4b"} 8.0 | vllm:num_requests_waiting{model_name="qwen3_4b"} 47.0 | vllm:gpu_cache_usage_perc{model_name="qwen3_4b"} 0.98 | vllm:num_preemptions_total{model_name="qwen3_4b"} 312.0 | ...
+```
+- **kv_usage**：0.98
+- **waiting**：47.0
+- **preemptions_total**：312.0
+- **prefix_hit_rate**：0.1333
+- **hint**：排队 47 且 KV 占用 98%：先降并发/扩副本，再谈压测数字
+# exit 1
+```
+
+```console
+$ llmtriage slo --csv examples/slo_samples.csv --ttft-slo 1.0 --tpot-slo 0.1
+## slo → `DEGRADED`（OBSERVED）
+
+n=8 goodput=0.750 目标=0.990 超 TTFT 2 条 / 超 TPOT 0 条（SLO 1.000s / 0.100s）
+- **binding**：ttft
+- **ttft_p50**：0.51 · **ttft_p95**：2.4 · **tpot_p50**：0.023
+- **hint**：超的是 TTFT：瓶颈多在 prefill / 输入长度 / 排队，不在 decode
+# exit 1
+```
+
+```console
+$ llmtriage explain --log examples/vllm_fake_lead.log --metrics examples/vllm_metrics_saturated.txt
+## 下一步：待验证假设（按优先级）
+
+### 1. [HIGH] 引擎子进程崩溃，父进程日志里的报错是假线索（依赖包残缺或版本不匹配最常见）
+
+- 依据：logs
+- 下一句检查：`读子进程日志尾部：grep -n 'pid=' 启动日志 | tail -50；再单独 import 可疑包 …`
+
+### 2. [HIGH] 请求排队且 KV 缓存打满：吞吐被显存容量与并发上限卡住（排队 47 / 占用 98%）
+
+- 依据：metrics
+- 下一句检查：`① 降 --max-num-seqs 观察 waiting 是否回落 ② 扩副本 ③ 开 --enable-prefix-caching …`
+# exit 0
+```
+
 ## Postmortem reports
 
 `llmtriage postmortem` turns findings into the document the JD-shaped work actually ends with:
@@ -117,6 +184,8 @@ Two generated examples ship in the repo, both produced by the CLI (not hand-writ
 |---|---|
 | [`examples/postmortem-example.md`](examples/postmortem-example.md) | `CONFIRMED`, 4 timeline entries, verification filled |
 | [`examples/postmortem-unresolved-example.md`](examples/postmortem-unresolved-example.md) | `UNRESOLVED`, no verification → flagged, open items enumerated |
+| [`examples/vllm_metrics_saturated.txt`](examples/vllm_metrics_saturated.txt) | a real vLLM `/metrics` capture (labels, HELP/TYPE lines) that trips `SATURATED` |
+| [`examples/slo_samples.csv`](examples/slo_samples.csv) | 8 `ttft_s,tpot_s` samples where 2 misses make goodput 0.75 |
 
 ## What is verified, and on what
 
@@ -221,8 +290,7 @@ Surveyed 2026-10-31 via the GitHub API; star counts move, so treat them as a tim
 ## Development
 
 ```bash
-python -m pytest -q      # 31 tests: NVIDIA + ROCm parsing, budget math, log triage (with a
-                         # negative control), a live OpenAI-stub probe, report schema,
+python -m pytest -q      # 57 tests: NVIDIA + ROCm parsing, budget math, log triage (with a                         # negative control), a live OpenAI-stub probe, report schema,
                          # postmortem shape + honesty rules, exit codes
 ```
 
