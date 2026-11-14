@@ -1,7 +1,6 @@
 """新子命令的 CLI 契约测试：退出码语义 + 人可读输出。"""
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from llmtriage.cli import main

@@ -204,7 +204,6 @@ def test_probe_measures_throughput_from_usage(live_server):
 # ------------------------------------------------------------------- report
 def test_report_json_schema_and_states():
     from llmtriage.budget import estimate
-    from llmtriage.logs import analyse
     from llmtriage.report import build
 
     findings = [estimate(tokens=12000, tok_per_s=4.32, deadline_s=4500, requests=2)]

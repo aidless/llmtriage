@@ -9,7 +9,6 @@ from pathlib import Path
 from . import __version__
 from .budget import estimate
 from .explain import explain, format_hypotheses
-from .finding import SEVERITY
 from .gpu import snapshot
 from .logs import analyse
 from .metrics import snapshot_metrics

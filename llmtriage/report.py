@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Iterable
 
-from .finding import Finding, SEVERITY
+from .finding import Finding
 
 OK_VERDICTS = {"OK", "READY", "GO", "MEASURED", "NO_ERROR_FOUND"}
 
