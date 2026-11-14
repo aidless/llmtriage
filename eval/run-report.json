@@ -1,0 +1,129 @@
+{
+ "total": 20,
+ "passed": 20,
+ "failed": 0,
+ "selftest": false,
+ "failed_by_axis": {},
+ "results": [
+  {
+   "id": "budget-no-go",
+   "axis": "budget",
+   "ok": true,
+   "detail": "NO_GO"
+  },
+  {
+   "id": "budget-required-seconds",
+   "axis": "budget",
+   "ok": true,
+   "detail": "6666.7"
+  },
+  {
+   "id": "budget-missing-throughput",
+   "axis": "budget",
+   "ok": true,
+   "detail": "UNKNOWN"
+  },
+  {
+   "id": "logs-fake-lead",
+   "axis": "logs",
+   "ok": true,
+   "detail": "FAKE_LEAD_SUBPROCESS_ERROR"
+  },
+  {
+   "id": "logs-child-pid",
+   "axis": "logs",
+   "ok": true,
+   "detail": "48213"
+  },
+  {
+   "id": "logs-genuine-parent-error",
+   "axis": "logs",
+   "ok": true,
+   "detail": "GENUINE_PARENT_ERROR"
+  },
+  {
+   "id": "gpu-rocm-vram-total",
+   "axis": "gpu",
+   "ok": true,
+   "detail": "49136"
+  },
+  {
+   "id": "gpu-rocm-column-order",
+   "axis": "gpu",
+   "ok": true,
+   "detail": "27"
+  },
+  {
+   "id": "gpu-empty-nvidia-raises",
+   "axis": "gpu",
+   "ok": true,
+   "detail": "raised ValueError"
+  },
+  {
+   "id": "metrics-saturated",
+   "axis": "metrics",
+   "ok": true,
+   "detail": "SATURATED"
+  },
+  {
+   "id": "metrics-prefix-hit-rate",
+   "axis": "metrics",
+   "ok": true,
+   "detail": "0.1333"
+  },
+  {
+   "id": "slo-sample-count",
+   "axis": "slo",
+   "ok": true,
+   "detail": "8"
+  },
+  {
+   "id": "slo-goodput",
+   "axis": "slo",
+   "ok": true,
+   "detail": "0.75"
+  },
+  {
+   "id": "slo-ttft-p95",
+   "axis": "slo",
+   "ok": true,
+   "detail": "2.4"
+  },
+  {
+   "id": "report-overall-worst",
+   "axis": "report",
+   "ok": true,
+   "detail": "NO_GO"
+  },
+  {
+   "id": "report-summary-line",
+   "axis": "report",
+   "ok": true,
+   "detail": "1 项异常（gpu）；1 项数据不足（metrics）"
+  },
+  {
+   "id": "cli-exit-code-unknown",
+   "axis": "cli",
+   "ok": true,
+   "detail": "3"
+  },
+  {
+   "id": "cli-logs-exit-code",
+   "axis": "cli",
+   "ok": true,
+   "detail": "1"
+  },
+  {
+   "id": "postmortem-no-fixed-claim",
+   "axis": "postmortem",
+   "ok": true,
+   "detail": "False"
+  },
+  {
+   "id": "explain-fake-lead-hypothesis",
+   "axis": "explain",
+   "ok": true,
+   "detail": "H-DEP-BROKEN"
+  }
+ ]
+}

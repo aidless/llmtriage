@@ -307,3 +307,39 @@ than happy paths:
 ## License
 
 MIT
+
+## 验收标准与复算
+
+本仓的验收判据只有一条：`python3 eval/run_cases.py` 的通过率必须 ≥100%（20/20），且 `make eval` 退出码必须为 0；任何一条 case 失败即判为不合格（`run_cases.py` exit 1），题库本身有问题（缺字段/重复 id/读不了）即 exit 2。
+
+这套题不是"示例数据"，`expr` 题的期望值全部由本仓 API 现算得出（改一行实现就会变红），输入取自本仓的真实抓取：`examples/vllm_fake_lead.log`、`examples/vllm_metrics_saturated.txt`、`examples/slo_samples.csv`、`tests/fixtures/rocm_smi_w7900_2026-11-01.csv`。
+
+| axis | 条数 | 验的是什么 | 真调用的入口 |
+|---|---|---|---|
+| `budget` | 3 | 预算换算（含 20% 余量）、缺吞吐时拒绝下结论 | `llmtriage.budget.estimate` |
+| `logs` | 3 | 父进程假线索 vs 子进程真异常、负对照（父进程自身 traceback 不许报成假线索）、子进程 pid | `llmtriage.logs.analyse` |
+| `gpu` | 3 | ROCm VRAM 解析（按列名）、列顺序打乱后结果不变、空 nvidia-smi 必须抛 `ValueError` | `llmtriage.gpu.parse_rocm_smi` / `parse_nvidia_smi` |
+| `metrics` | 2 | 真实 `/metrics` 抓取的 SATURATED 判定、prefix_hit_rate | `llmtriage.metrics.snapshot_metrics` |
+| `slo` | 3 | 样本条数 n、goodput=0.75、ttft_p95（nearest-rank 不插值） | `llmtriage.slo.parse_samples_csv` / `evaluate_slo` |
+| `report` | 2 | 多条 finding 的总体 verdict 取最坏、摘要行原文 | `llmtriage.report.overall` / `_summary_line` |
+| `cli` | 2 | 退出码契约（UNKNOWN→3）、`logs` 子命令对真实日志返回 1 | `llmtriage.cli._exit_code` / `main` |
+| `postmortem` | 1 | 根因 UNRESOLVED 且无验证证据时，产物里不出现「已修复」 | `llmtriage.postmortem.build_postmortem` |
+| `explain` | 1 | 假线索 finding 必须产出 `H-DEP-BROKEN` 假设 | `llmtriage.explain.explain` |
+
+三条命令（从仓库根执行）：
+
+```bash
+python3 eval/run_cases.py             # 20/20 cases passed，退出码 0
+python3 eval/run_cases.py --selftest  # 19/20（首题期望值被篡改必须变红），退出码 0
+python3 eval/run_cases.py --save      # 重建 eval/run-report.json（含 results 与 failed_by_axis）
+```
+
+**复算说明**：每题 `verify` 字段本身就是复算代码——它当场执行本仓 API 并与 `expected` 比对，没有第二份"答案文件"可以走偏；`eval/run-report.json` 只是某次运行的落盘快照，随时代码即可重建（`--save`），改实现后重跑它若与文档数字不一致，以 `run_cases.py` 的实跑为准。`make eval` = 本题库 + 既有 `pytest -q`，任一失败即非零退出。
+
+**失败归因**：`run_cases.py` 不只报 pass_rate，失败按 `axis` 汇总并列出 case id，直接指向坏掉的那一层。`--selftest` 的实测输出就是范例：
+
+```
+19/20 cases passed
+失败归因（按 axis）：
+  budget: 1 条 —— budget-no-go
+```
